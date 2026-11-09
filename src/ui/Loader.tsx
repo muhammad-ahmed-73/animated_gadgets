@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import gsap from 'gsap'
 import { useStore } from '../store/useStore'
 import { rig } from '../lib/rig'
+import { sound } from '../lib/audio'
 import { NovaLogo } from './NovaLogo'
 
 const STATUS = ['Calibrating optics', 'Compiling shaders', 'Aligning sensors', 'Igniting display', 'Ready']
@@ -17,6 +18,29 @@ export function Loader() {
   const status = useRef<HTMLSpanElement>(null)
   const logoWrap = useRef<HTMLDivElement>(null)
   const [gone, setGone] = useState(false)
+  const [asking, setAsking] = useState(false)
+  const exitRef = useRef<(() => void) | null>(null)
+  const yesBtn = useRef<HTMLButtonElement>(null)
+
+  // The click is the user gesture browsers require before audio may start.
+  const choose = (withSound: boolean) => {
+    if (!exitRef.current) return
+    if (withSound) {
+      void sound.start()
+      useStore.getState().set({ soundOn: true })
+    }
+    const go = exitRef.current
+    exitRef.current = null
+    setAsking(false)
+    go()
+  }
+
+  useEffect(() => {
+    if (!asking) return
+    const el = root.current?.querySelector('.loader__ask')
+    if (el) gsap.fromTo(el, { opacity: 0, y: 16 }, { opacity: 1, y: 0, duration: 0.8, ease: 'expo.out' })
+    yesBtn.current?.focus()
+  }, [asking])
   const reduced = useStore((s) => s.reduced)
 
   useEffect(() => {
@@ -51,7 +75,8 @@ export function Loader() {
       if (shown >= 1 && !finished) {
         finished = true
         gsap.ticker.remove(tick)
-        exit()
+        exitRef.current = exit
+        setAsking(true)
       }
     }
 
@@ -78,13 +103,27 @@ export function Loader() {
       <div className="loader__half loader__half--b" />
       <div className="loader__core">
         <div ref={logoWrap}><NovaLogo className="loader__logo" draw /></div>
-        <div className="loader__meta mono">
+        <div className="loader__meta mono" style={{ display: asking ? 'none' : undefined }}>
           <div className="loader__bar"><i ref={bar as React.RefObject<HTMLElement>} /></div>
           <div className="loader__row">
             <span ref={status}>{STATUS[0]}</span>
             <b ref={count as React.RefObject<HTMLElement>}>000</b>
           </div>
         </div>
+        {asking && (
+          <div className="loader__ask" role="dialog" aria-label="Enter with sound?">
+            <p className="mono">Enter with sound?</p>
+            <p className="loader__sub">Headphones recommended. Sound is optional and can be changed anytime from the top bar.</p>
+            <div className="row" style={{ justifyContent: 'center' }}>
+              <button ref={yesBtn} type="button" className="btn" data-cursor="link" onClick={() => choose(true)}>
+                <span className="btn__in">Yes</span>
+              </button>
+              <button type="button" className="btn" data-cursor="link" onClick={() => choose(false)}>
+                <span className="btn__in">No</span>
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   )
